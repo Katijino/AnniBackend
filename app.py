@@ -1,25 +1,31 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import sqlite3, os
+import sqlite3, os, uuid
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 CORS(app)
 
+# Database
 DB_FILE = "database.db"
-UPLOAD_FOLDER = 'static/uploads'
+
+# Persistent disk for uploads
+UPLOAD_FOLDER = '/mnt/data/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
+# Helper: Check allowed file extensions
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# Helper: Connect to SQLite
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
+# CLI: Initialize DB from schema.sql
 @app.cli.command("init-db")
 def init_db():
     import click
@@ -29,10 +35,15 @@ def init_db():
     conn.close()
     click.echo("Database initialized.")
 
-# Home route (optional, for testing)
+# Home route
 @app.route("/")
 def home():
     return jsonify({"message": "Backend running"}), 200
+
+# Serve uploaded images
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # Timeline API
 @app.route('/api/timeline', methods=['GET'])
@@ -51,10 +62,11 @@ def add_event():
 
     image_url = None
     if image and allowed_file(image.filename):
-        filename = secure_filename(image.filename)
+        ext = image.filename.rsplit('.', 1)[1].lower()
+        filename = f"{uuid.uuid4().hex}.{ext}"  # unique filename
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         image.save(filepath)
-        image_url = f"/static/uploads/{filename}"
+        image_url = f"/uploads/{filename}"  # URL for frontend
 
     conn = get_db_connection()
     conn.execute(
@@ -107,5 +119,6 @@ if __name__ == '__main__':
         from click.testing import CliRunner
         runner = CliRunner()
         runner.invoke(init_db)
+
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
