@@ -1,35 +1,27 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
-import os
+import sqlite3, os
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-CORS(app)  # allows React frontend to connect
-
-
+CORS(app)
 
 DB_FILE = "database.db"
-
 UPLOAD_FOLDER = 'static/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
-
 @app.cli.command("init-db")
 def init_db():
-    """Initialize the database from schema.sql"""
     import click
     conn = get_db_connection()
     with open("schema.sql") as f:
@@ -37,16 +29,18 @@ def init_db():
     conn.close()
     click.echo("Database initialized.")
 
+# Home route (optional, for testing)
+@app.route("/")
+def home():
+    return jsonify({"message": "Backend running"}), 200
 
-
-# ✅ Timeline routes
+# Timeline API
 @app.route('/api/timeline', methods=['GET'])
 def get_timeline():
     conn = get_db_connection()
     events = conn.execute('SELECT * FROM timeline ORDER BY date DESC').fetchall()
     conn.close()
     return jsonify([dict(e) for e in events])
-
 
 @app.route('/api/timeline', methods=['POST'])
 def add_event():
@@ -60,7 +54,7 @@ def add_event():
         filename = secure_filename(image.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         image.save(filepath)
-        image_url = f"/static/uploads/{filename}"  # accessible URL
+        image_url = f"/static/uploads/{filename}"
 
     conn = get_db_connection()
     conn.execute(
@@ -69,7 +63,6 @@ def add_event():
     )
     conn.commit()
     conn.close()
-
     return jsonify({'message': 'Event added successfully!'})
 
 @app.route('/api/timeline/<int:event_id>', methods=['DELETE'])
@@ -80,17 +73,13 @@ def delete_event(event_id):
     conn.close()
     return jsonify({'message': f'Event {event_id} deleted successfully!'})
 
-
-
-
-# ✅ Future Plans routes
+# Future Plans API
 @app.route('/api/futureplans', methods=['GET'])
 def get_plans():
     conn = get_db_connection()
     plans = conn.execute('SELECT * FROM future_plans ORDER BY id DESC').fetchall()
     conn.close()
     return jsonify([dict(p) for p in plans])
-
 
 @app.route('/api/futureplans', methods=['POST'])
 def add_plan():
@@ -112,9 +101,8 @@ def delete_plan(plan_id):
     conn.close()
     return jsonify({'message': f'Plan {plan_id} deleted successfully!'})
 
-
-
 if __name__ == '__main__':
+    # Auto-create DB if it doesn't exist
     if not os.path.exists(DB_FILE):
         from click.testing import CliRunner
         runner = CliRunner()
